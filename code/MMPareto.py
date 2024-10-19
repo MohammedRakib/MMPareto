@@ -1,9 +1,7 @@
 from utils.utils import setup_seed
-from dataset.av_dataset import AVDataset_CD
-import copy
+from dataset.av_dataset import AVDataset_CD, CremadDataset, AVMNIST, VGGSound
 from torch.utils.data import DataLoader
 from models.models import AVClassifier
-from sklearn import metrics
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
@@ -14,15 +12,13 @@ import numpy as np
 from tqdm import tqdm
 import argparse
 import os
-import pickle
-from operator import mod
 
 
 
 def get_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', required=True, type=str,
-                        help='KineticSound, CREMAD')
+                        help='KineticSound, CREMAD, AVMNIST, VGGSound')
     parser.add_argument('--model', default='model', type=str)
     parser.add_argument('--n_classes', default=6, type=int)
     parser.add_argument('--batch_size', default=64, type=int)
@@ -94,7 +90,11 @@ def train_epoch(args, epoch, model, device, dataloader, optimizer, scheduler, wr
         images = images.to(device)
         spec = spec.to(device)
         label = label.to(device)
-        out,out_a,out_v = model(spec.float(), images.float())
+        if args.dataset == 'VGGSound':
+            spec = spec.unsqueeze(1).float()
+        else:
+            spec = spec.float()
+        out,out_a,out_v = model(spec, images.float())
 
         loss_mm = criterion(out, label)
 
@@ -232,8 +232,13 @@ def valid(args, model, device, dataloader):
             spec = spec.to(device)
             images = images.to(device)
             label = label.to(device)
-
-            prediction_all = model(spec.float(), images.float())
+            
+            if args.dataset == 'VGGSound':
+                spec = spec.unsqueeze(1).float()
+            else:
+                spec = spec.float()
+                
+            prediction_all = model(spec, images.float())
 
 
             prediction=prediction_all[0]
@@ -283,8 +288,22 @@ def main():
 
 
     if args.dataset == 'CREMAD':
-        train_dataset = AVDataset_CD(mode='train')
-        test_dataset = AVDataset_CD(mode='test')
+        train_dataset = CremadDataset(mode='train')
+        test_dataset = CremadDataset(mode='test')
+        # train_dataset = AVDataset_CD(mode='train')
+        # test_dataset = AVDataset_CD(mode='test')
+    elif args.dataset == 'VGGSound':
+        train_dataset = VGGSound(mode='train')
+        test_dataset = VGGSound(mode='test')
+    elif args.dataset == 'AVMNIST':
+        train_dataset = AVMNIST(mode='train')
+        test_dataset = AVMNIST(mode='test')
+    else:
+        raise NotImplementedError('Incorrect dataset name {}'.format(args.dataset))
+    
+    print("\n WARNING: Testing on a small dataset \n")
+    train_dataset = torch.utils.data.Subset(train_dataset, range(100))
+    test_dataset = torch.utils.data.Subset(test_dataset, range(100))
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size,
                                   shuffle=True, num_workers=16, pin_memory=False)

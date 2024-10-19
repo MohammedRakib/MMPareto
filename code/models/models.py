@@ -142,14 +142,20 @@ class AVClassifier(nn.Module):
             n_classes = 6
         elif args.dataset == 'AVE':
             n_classes = 28
+        elif args.dataset == 'AVMNIST':
+            n_classes = 10
         else:
             raise NotImplementedError('Incorrect dataset name {}'.format(args.dataset))
 
 
         self.dataset = args.dataset
+        self.args = args
 
         self.audio_net = resnet18(modality='audio')
-        self.visual_net = resnet18(modality='visual')
+        if args.dataset == 'AVMNIST':
+            self.visual_net = resnet18(modality='image')
+        else:
+            self.visual_net = resnet18(modality='visual')
 
         self.head = nn.Linear(1024, n_classes)
         self.head_audio = nn.Linear(512, n_classes)
@@ -158,8 +164,8 @@ class AVClassifier(nn.Module):
 
 
     def forward(self, audio, visual):
-        if self.dataset != 'CREMAD':
-            visual = visual.permute(0, 2, 1, 3, 4).contiguous()
+        # if self.dataset != 'CREMAD':
+        #     visual = visual.permute(0, 2, 1, 3, 4).contiguous()
         a = self.audio_net(audio)
         v = self.visual_net(visual)
 
@@ -169,7 +175,10 @@ class AVClassifier(nn.Module):
         v = v.permute(0, 2, 1, 3, 4)
 
         a = F.adaptive_avg_pool2d(a, 1)
-        v = F.adaptive_avg_pool3d(v, 1)
+        if self.args.dataset == 'AVMNIST':
+            v = F.adaptive_avg_pool2d(v, 1)
+        else:
+            v = F.adaptive_avg_pool3d(v, 1)
 
         a = torch.flatten(a, 1)
         v = torch.flatten(v, 1)

@@ -1,14 +1,11 @@
 import csv
-import math
 import os
 import random
-import copy
+import librosa
 import numpy as np
 import torch
 import torch.nn.functional
-import torchaudio
 from PIL import Image
-from scipy import signal
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -105,3 +102,245 @@ class AVDataset_CD(Dataset):
     images = torch.cat(image_arr)
 
     return fbank, images, self.classes.index(self.data2class[datum])
+
+
+class CremadDataset(Dataset):
+
+    def __init__(self, mode='train'):
+        self.mode = mode
+        self.class_dict = {'NEU': 0, 'HAP': 1, 'SAD': 2, 'FEA': 3, 'DIS': 4, 'ANG': 5}
+
+        self.visual_path = '/home/rakib/Multimodal-Datasets/CREMA-D/Image-01-FPS'  # Path to visual data
+        self.audio_path = '/home/rakib/Multimodal-Datasets/CREMA-D/AudioWAV'  # Path to audio data
+
+        self.train_csv = '/home/rakib/Multi-modal-Imbalance/data/CREMAD/train.csv'  # Train CSV
+        self.test_csv = '/home/rakib/Multi-modal-Imbalance/data/CREMAD/test.csv'  # Test CSV
+
+        csv_file = self.train_csv if mode == 'train' else self.test_csv
+
+        self.data = []
+        self.data2class = {}
+
+        # Load data from CSV file
+        with open(csv_file, encoding='UTF-8-sig') as f2:
+            csv_reader = csv.reader(f2)
+            for item in csv_reader:
+                audio_path = os.path.join(self.audio_path, item[0] + '.wav')
+                visual_path = os.path.join(self.visual_path, item[0])
+                
+                if os.path.exists(audio_path) and os.path.exists(visual_path):
+                    self.data.append(item[0])
+                    self.data2class[item[0]] = self.class_dict[item[1]]
+                else:
+                    continue
+
+        self._init_atransform()
+
+    def _init_atransform(self):
+        self.aid_transform = transforms.Compose([transforms.ToTensor()])
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        datum = self.data[idx]
+
+        # Load and process audio (similar to `AVDataset_CD`)
+        samples, rate = librosa.load(os.path.join(self.audio_path, datum + '.wav'), sr=22050)
+        resamples = np.tile(samples, 3)[:22050*3]  # Limit to 3 seconds of audio
+        resamples = np.clip(resamples, -1., 1.)  # Clip audio data between -1 and 1
+        spectrogram = librosa.stft(resamples, n_fft=512, hop_length=353)
+        spectrogram = np.log(np.abs(spectrogram) + 1e-7)
+        audio_tensor = torch.tensor(spectrogram, dtype=torch.float32).unsqueeze(0)  # Unsqueeze for (1, *) format
+        
+        # Visual processing
+        folder_path = os.path.join(self.visual_path, datum)
+        image_samples = sorted(os.listdir(folder_path))
+        file_num = len(image_samples)
+        pick_num = 2  # Two frames as in `AVDataset_CD`
+        seg = int(file_num / pick_num)
+        image_arr = []
+
+        if self.mode == 'train':
+            transf = transforms.Compose([
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+        else:
+            transf = transforms.Compose([
+                transforms.Resize(size=(224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+
+        for i in range(pick_num):
+            if self.mode == 'train':
+                index = random.randint(i * seg, (i + 1) * seg - 1)
+            else:
+                index = i * seg + int(seg / 2)
+
+            img_path = os.path.join(folder_path, image_samples[index])
+            img = Image.open(img_path).convert('RGB')
+            image_arr.append(transf(img).unsqueeze(0))
+
+        images = torch.cat(image_arr)  # Stack the frames (2, 3, 224, 224)
+
+        # Label
+        label = self.data2class[datum]
+
+        return audio_tensor, images, label
+
+      
+      
+class AVMNIST(Dataset):
+    def __init__(self, data_root='/home/rakib/Multimodal-Datasets/AV-MNIST/avmnist', mode='train'):
+        super(AVMNIST, self).__init__()
+        image_data_path = os.path.join(data_root, 'image')
+        audio_data_path = os.path.join(data_root, 'audio')
+        
+        if mode == 'train':
+            self.image = np.load(os.path.join(image_data_path, 'train_data.npy'))
+            self.audio = np.load(os.path.join(audio_data_path, 'train_data.npy'))
+            self.label = np.load(os.path.join(data_root, 'train_labels.npy'))
+            
+        elif mode == 'test':
+            self.image = np.load(os.path.join(image_data_path, 'test_data.npy'))
+            self.audio = np.load(os.path.join(audio_data_path, 'test_data.npy'))
+            self.label = np.load(os.path.join(data_root, 'test_labels.npy'))
+
+        self.length = len(self.image)
+        
+    def __getitem__(self, idx):
+        # Get image and audio for the index
+        image = self.image[idx]
+        audio = self.audio[idx]
+        label = self.label[idx]
+        
+        # Normalize image and audio
+        image = image / 255.0
+        audio = audio / 255.0
+        
+        # Reshape image and audio
+        image = image.reshape(28, 28)  # Reshape to 28x28 for MNIST
+        image = np.expand_dims(image, 0)  # Add channel dimension: (1, 28, 28)
+        audio = np.expand_dims(audio, 0)  # Add channel dimension: (1, 28, 28)
+        
+        # Convert to torch tensors
+        image = torch.from_numpy(image).float()
+        audio = torch.from_numpy(audio).float()
+        label = torch.tensor(label, dtype=torch.long)
+        
+        # Return the same format as AVDataset: (spectrogram, image_n, label, idx)
+        return audio, image, label
+    
+    def __len__(self):
+        return self.length
+      
+
+class VGGSound(Dataset):
+
+    def __init__(self, mode='train'):
+        self.mode = mode
+        train_video_data = []
+        train_audio_data = []
+        test_video_data = []
+        test_audio_data = []
+        train_label = []
+        test_label = []
+        train_class = []
+        test_class = []
+
+        with open('/home/rakib/Multi-modal-Imbalance/data/VGGSound/vggsound.csv') as f:
+            csv_reader = csv.reader(f)
+            next(csv_reader)  # Skip the header
+            
+            for item in csv_reader:
+                youtube_id = item[0]
+                timestamp = "{:06d}".format(int(item[1]))  # Zero-padding the timestamp
+                train_test_split = item[3]
+
+                video_dir = os.path.join('/home/rakib/Multimodal-Datasets/VGGSound/video/frames', train_test_split, 'Image-{:02d}-FPS'.format(1), f'{youtube_id}_{timestamp}')
+                audio_dir = os.path.join('/home/rakib/Multimodal-Datasets/VGGSound/audio', train_test_split, f'{youtube_id}_{timestamp}.wav')
+
+                if os.path.exists(video_dir) and os.path.exists(audio_dir) and len(os.listdir(video_dir)) > 3:
+                    if train_test_split == 'train':
+                        train_video_data.append(video_dir)
+                        train_audio_data.append(audio_dir)
+                        if item[2] not in train_class: 
+                            train_class.append(item[2])
+                        train_label.append(item[2])
+                    elif train_test_split == 'test':
+                        test_video_data.append(video_dir)
+                        test_audio_data.append(audio_dir)
+                        if item[2] not in test_class: 
+                            test_class.append(item[2])
+                        test_label.append(item[2])
+
+        self.classes = train_class
+        class_dict = dict(zip(self.classes, range(len(self.classes))))
+
+        if mode == 'train':
+            self.video = train_video_data
+            self.audio = train_audio_data
+            self.label = [class_dict[label] for label in train_label]
+        elif mode == 'test':
+            self.video = test_video_data
+            self.audio = test_audio_data
+            self.label = [class_dict[label] for label in test_label]
+
+    def __len__(self):
+        return len(self.video)
+
+    def __getitem__(self, idx):
+        # Audio processing (using librosa to compute the spectrogram)
+        sample, rate = librosa.load(self.audio[idx], sr=16000, mono=True)
+        while len(sample) / rate < 10.:
+            sample = np.tile(sample, 2)
+
+        start_point = random.randint(0, rate * 5)
+        new_sample = sample[start_point:start_point + rate * 5]
+        new_sample[new_sample > 1.] = 1.
+        new_sample[new_sample < -1.] = -1.
+
+        spectrogram = librosa.stft(new_sample, n_fft=256, hop_length=128)
+        spectrogram = np.log(np.abs(spectrogram) + 1e-7)
+
+        # Image transformations based on mode
+        if self.mode == 'train':
+            transform = transforms.Compose([
+                transforms.RandomResizedCrop(224),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize(size=(224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+
+        # Image processing
+        image_samples = os.listdir(self.video[idx])
+        image_samples = sorted(image_samples)
+        pick_num = 3  # Fixed number of frames to match AVDataset's behavior
+        seg = int(len(image_samples) / pick_num)
+        image_arr = []
+
+        for i in range(pick_num):
+            tmp_index = int(seg * i)
+            img = Image.open(os.path.join(self.video[idx], image_samples[tmp_index])).convert('RGB')
+            img = transform(img)
+            img = img.unsqueeze(1).float()  # Add channel dimension for concatenation
+            image_arr.append(img)
+            if i == 0:
+                image_n = img
+            else:
+                image_n = torch.cat((image_n, img), 1)  # Concatenate along the channel dimension
+
+        # Label
+        label = self.label[idx]
+
+        return spectrogram, image_n, label
