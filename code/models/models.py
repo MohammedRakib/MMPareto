@@ -299,6 +299,103 @@ class URFunnyClassifier(nn.Module):
         return out,out_audio,out_video,out_text
 
 
+class URFunnyAVClassifier(nn.Module):
+    def __init__(self, args):
+        super(URFunnyAVClassifier, self).__init__()
+
+        # Define number of classes based on the dataset
+        n_classes = args.n_classes
+
+        if n_classes is None:
+            raise NotImplementedError(f"Incorrect dataset name {self.dataset}")
+
+        input_dim = 768  # Assumed Transformer output dimension
+        # Initialize only the encoders specified in modality_combo
+        self.audio_net = Transformer(81, input_dim, 4, 8)
+        self.visual_net = Transformer(371, input_dim, 4, 8)
+
+        self.head = nn.Linear(input_dim * 2, n_classes)
+        self.head_audio = nn.Linear(input_dim, n_classes)
+        self.head_video = nn.Linear(input_dim, n_classes)
+
+
+    def forward(self, audio, visual):
+        audio_features = self.audio_net(audio)
+        visual_features = self.visual_net(visual)
+
+        out = torch.cat((audio_features,visual_features),1)
+        out = self.head(out)
+
+        out_audio=self.head_audio(audio_features)
+        out_video=self.head_video(visual_features)
+
+        return out,out_audio,out_video
+    
+class URFunnyATClassifier(nn.Module):
+    def __init__(self, args):
+        super(URFunnyATClassifier, self).__init__()
+
+        # Define number of classes based on the dataset
+        n_classes = args.n_classes
+
+        if n_classes is None:
+            raise NotImplementedError(f"Incorrect dataset name {self.dataset}")
+
+        input_dim = 768  # Assumed Transformer output dimension
+        # Initialize only the encoders specified in modality_combo
+        self.audio_net = Transformer(81, input_dim, 4, 8)
+        self.text_net = Transformer(300, input_dim, 4, 8)
+
+        self.head = nn.Linear(input_dim * 2, n_classes)
+        self.head_audio = nn.Linear(input_dim, n_classes)
+        self.head_text = nn.Linear(input_dim, n_classes)
+
+
+    def forward(self, audio, token):
+        audio_features = self.audio_net(audio)
+        text_features = self.text_net(token)
+
+        out = torch.cat((audio_features,text_features),1)
+        out = self.head(out)
+
+        out_audio=self.head_audio(audio_features)
+        out_text=self.head_text(text_features)
+
+        return out,out_audio,out_text
+    
+
+class URFunnyVTClassifier(nn.Module):
+    def __init__(self, args):
+        super(URFunnyVTClassifier, self).__init__()
+
+        # Define number of classes based on the dataset
+        n_classes = args.n_classes
+
+        if n_classes is None:
+            raise NotImplementedError(f"Incorrect dataset name {self.dataset}")
+
+        input_dim = 768  # Assumed Transformer output dimension
+        # Initialize only the encoders specified in modality_combo
+        self.visual_net = Transformer(371, input_dim, 4, 8)
+        self.text_net = Transformer(300, input_dim, 4, 8)
+
+        self.head = nn.Linear(input_dim * 2, n_classes)
+        self.head_video = nn.Linear(input_dim, n_classes)
+        self.head_text = nn.Linear(input_dim, n_classes)
+
+
+    def forward(self, visual, token):
+        visual_features = self.visual_net(visual)
+        text_features = self.text_net(token)
+
+        out = torch.cat((visual_features,text_features),1)
+        out = self.head(out)
+
+        out_video=self.head_video(visual_features)
+        out_text=self.head_text(text_features)
+
+        return out,out_video,out_text
+
 
 class CLIPClassifier(nn.Module):
     def __init__(self, args, image_encoder_name='ViT-B/32'):

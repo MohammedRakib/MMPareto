@@ -43,20 +43,6 @@ mkdir -p log_print
 # | tee log_print/MMPareto-VGGSound.log
 
 
-python MMPareto-URFunny.py \
---dataset URFunny \
---model MMPareto \
---gpu_ids 0 \
---n_classes 2 \
---batch_size  16 \
---epochs 1 \
---learning_rate 0.001 \
---lr_decay_step 70 \
---lr_decay_ratio 0.1 \
---train \
-| tee log_print/MMPareto-URFunny.log
-
-
 # python MMPareto-MVSA.py \
 # --dataset MVSA \
 # --model MMPareto \
@@ -69,3 +55,56 @@ python MMPareto-URFunny.py \
 # --lr_decay_ratio 0.1 \
 # --train \
 # | tee log_print/MMPareto-MVSA.log
+
+# python MMPareto-URFunny.py \
+# --dataset URFunny \
+# --model MMPareto \
+# --gpu_ids 0 \
+# --n_classes 2 \
+# --batch_size  16 \
+# --epochs 1 \
+# --learning_rate 0.001 \
+# --lr_decay_step 70 \
+# --lr_decay_ratio 0.1 \
+# --train \
+# | tee log_print/MMPareto-URFunny.log
+
+
+python MMPareto-av-URFunny.py \
+--dataset URFunny \
+--model MMPareto \
+--gpu_ids 0 \
+--n_classes 2 \
+--batch_size  16 \
+--epochs 1 \
+--learning_rate 0.001 \
+--lr_decay_step 70 \
+--lr_decay_ratio 0.1 \
+--train \
+| tee log_print/MMPareto-av-URFunny.log
+
+# python MMPareto-at-URFunny.py \
+# --dataset URFunny \
+# --model MMPareto \
+# --gpu_ids 0 \
+# --n_classes 2 \
+# --batch_size  16 \
+# --epochs 1 \
+# --learning_rate 0.001 \
+# --lr_decay_step 70 \
+# --lr_decay_ratio 0.1 \
+# --train \
+# | tee log_print/MMPareto-at-URFunny.log
+
+# python MMPareto-vt-URFunny.py \
+# --dataset URFunny \
+# --model MMPareto \
+# --gpu_ids 0 \
+# --n_classes 2 \
+# --batch_size  16 \
+# --epochs 1 \
+# --learning_rate 0.001 \
+# --lr_decay_step 70 \
+# --lr_decay_ratio 0.1 \
+# --train \
+# | tee log_print/MMPareto-vt-URFunny.log
