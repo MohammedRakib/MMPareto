@@ -263,9 +263,9 @@ def main():
     else:
         raise NotImplementedError('Incorrect dataset name {}'.format(args.dataset))
 
-    print("\n WARNING: Testing on a small dataset \n")
-    train_dataset = torch.utils.data.Subset(train_dataset, range(10))
-    test_dataset = torch.utils.data.Subset(test_dataset, range(10))
+    # print("\n WARNING: Testing on a small dataset \n")
+    # train_dataset = torch.utils.data.Subset(train_dataset, range(10))
+    # test_dataset = torch.utils.data.Subset(test_dataset, range(10))
 
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size,
                                   shuffle=True, num_workers=16, pin_memory=True)

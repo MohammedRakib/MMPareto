@@ -289,9 +289,9 @@ def main():
     else:
         raise NotImplementedError('Incorrect dataset name {}'.format(args.dataset))
     
-    print("\n WARNING: Testing on a small dataset \n")
-    train_dataset = torch.utils.data.Subset(train_dataset, range(100))
-    test_dataset = torch.utils.data.Subset(test_dataset, range(100))
+    # print("\n WARNING: Testing on a small dataset \n")
+    # train_dataset = torch.utils.data.Subset(train_dataset, range(100))
+    # test_dataset = torch.utils.data.Subset(test_dataset, range(100))
 
     loader = URFunny_Dataloader()
     train_dataloader = loader.train_dataloader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
