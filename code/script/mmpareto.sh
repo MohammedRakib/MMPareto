@@ -1,4 +1,6 @@
 #!/bin/bash
+mkdir -p log_print
+
 python MMPareto.py \
 --dataset CREMAD \
 --model MMPareto \
