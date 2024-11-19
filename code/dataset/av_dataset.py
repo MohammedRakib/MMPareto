@@ -104,24 +104,27 @@ class AVDataset_CD(Dataset):
     return fbank, images, self.classes.index(self.data2class[datum])
 
 
-class CremadDataset(Dataset):
 
-    def __init__(self, mode='train'):
+class CremadDataset(Dataset):
+    def __init__(self, mode='train', 
+                 train_path='/home/rakib/Multi-modal-Imbalance/data/CREMAD/train.csv',
+                 test_path='/home/rakib/Multi-modal-Imbalance/data/CREMAD/test.csv',
+                 visual_path='/home/rakib/Multimodal-Datasets/CREMA-D/Image-01-FPS',
+                 audio_path='/home/rakib/Multimodal-Datasets/CREMA-D/AudioWAV'):
+        
         self.mode = mode
         self.class_dict = {'NEU': 0, 'HAP': 1, 'SAD': 2, 'FEA': 3, 'DIS': 4, 'ANG': 5}
+        self.visual_path = visual_path
+        self.audio_path = audio_path
 
-        self.visual_path = '/home/rakib/Multimodal-Datasets/CREMA-D/Image-01-FPS'  # Path to visual data
-        self.audio_path = '/home/rakib/Multimodal-Datasets/CREMA-D/AudioWAV'  # Path to audio data
+        # Use the appropriate CSV file depending on the mode (train or test)
+        csv_file = train_path if mode == 'train' else test_path
 
-        self.train_csv = '/home/rakib/Multi-modal-Imbalance/data/CREMAD/train.csv'  # Train CSV
-        self.test_csv = '/home/rakib/Multi-modal-Imbalance/data/CREMAD/test.csv'  # Test CSV
+        self.image = []
+        self.audio = []
+        self.label = []
 
-        csv_file = self.train_csv if mode == 'train' else self.test_csv
-
-        self.data = []
-        self.data2class = {}
-
-        # Load data from CSV file
+        # Load data from CSV
         with open(csv_file, encoding='UTF-8-sig') as f2:
             csv_reader = csv.reader(f2)
             for item in csv_reader:
@@ -129,68 +132,60 @@ class CremadDataset(Dataset):
                 visual_path = os.path.join(self.visual_path, item[0])
                 
                 if os.path.exists(audio_path) and os.path.exists(visual_path):
-                    self.data.append(item[0])
-                    self.data2class[item[0]] = self.class_dict[item[1]]
-                else:
-                    continue
-
-        self._init_atransform()
-
-    def _init_atransform(self):
-        self.aid_transform = transforms.Compose([transforms.ToTensor()])
+                    self.image.append(visual_path)
+                    self.audio.append(audio_path)
+                    self.label.append(self.class_dict[item[1]])
 
     def __len__(self):
-        return len(self.data)
+        return len(self.label)
 
     def __getitem__(self, idx):
-        datum = self.data[idx]
+        # Load label
+        label = self.label[idx]
 
-        # Load and process audio (similar to `AVDataset_CD`)
-        samples, rate = librosa.load(os.path.join(self.audio_path, datum + '.wav'), sr=22050)
-        resamples = np.tile(samples, 3)[:22050*3]  # Limit to 3 seconds of audio
-        resamples = np.clip(resamples, -1., 1.)  # Clip audio data between -1 and 1
+        ### Audio Processing ###
+        # Load and process audio with librosa
+        samples, rate = librosa.load(self.audio[idx], sr=22050)
+        # Ensure we have 3 seconds of audio by tiling the sample if needed
+        resamples = np.tile(samples, 3)[:22050 * 3]
+        resamples[resamples > 1.] = 1.
+        resamples[resamples < -1.] = -1.
+        
+        # Compute the STFT and log-scale the spectrogram
         spectrogram = librosa.stft(resamples, n_fft=512, hop_length=353)
         spectrogram = np.log(np.abs(spectrogram) + 1e-7)
-        audio_tensor = torch.tensor(spectrogram, dtype=torch.float32).unsqueeze(0)  # Unsqueeze for (1, *) format
         
-        # Visual processing
-        folder_path = os.path.join(self.visual_path, datum)
-        image_samples = sorted(os.listdir(folder_path))
-        file_num = len(image_samples)
-        pick_num = 2  # Two frames as in `AVDataset_CD`
-        seg = int(file_num / pick_num)
+        # Convert the spectrogram to a torch tensor and add a channel dimension
+        spectrogram = torch.tensor(spectrogram, dtype=torch.float32).unsqueeze(0)
+
+        ### Visual Processing ###
+        # Define the transformations (different for train and test)
+        transform = transforms.Compose([
+            transforms.RandomResizedCrop(224) if self.mode == 'train' else transforms.Resize(size=(224, 224)),
+            transforms.RandomHorizontalFlip() if self.mode == 'train' else transforms.Lambda(lambda x: x),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        
+        # Sample 3 frames from the image directory
+        visual_path = self.image[idx]
+        image_samples = sorted(os.listdir(visual_path))  # Get all image files
+        pick_num = 2  # Fixed number of frames like in AVDataset
+        seg = int(len(image_samples) / pick_num)  # Evenly spaced frame selection
+        
         image_arr = []
-
-        if self.mode == 'train':
-            transf = transforms.Compose([
-                transforms.RandomResizedCrop(224),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-        else:
-            transf = transforms.Compose([
-                transforms.Resize(size=(224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-            ])
-
         for i in range(pick_num):
-            if self.mode == 'train':
-                index = random.randint(i * seg, (i + 1) * seg - 1)
-            else:
-                index = i * seg + int(seg / 2)
+            tmp_index = int(seg * i)
+            img = Image.open(os.path.join(visual_path, image_samples[tmp_index])).convert('RGB')
+            img = transform(img)
+            img = img.unsqueeze(0)  # Add a batch dimension for concatenation
+            image_arr.append(img)
 
-            img_path = os.path.join(folder_path, image_samples[index])
-            img = Image.open(img_path).convert('RGB')
-            image_arr.append(transf(img).unsqueeze(0))
+        # Concatenate the 3 sampled frames along the batch dimension
+        images = torch.cat(image_arr, dim=0)
 
-        images = torch.cat(image_arr)  # Stack the frames (2, 3, 224, 224)
-
-        # Label
-        label = self.data2class[datum]
-
-        return audio_tensor, images, label
+        ### Return the data in the format required by AVDataset ###
+        return spectrogram, images, label
 
       
       

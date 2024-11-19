@@ -1,5 +1,6 @@
 from utils.utils import setup_seed
 from dataset.av_dataset import AVDataset_CD, CremadDataset, AVMNIST, VGGSound
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from models.models import AVClassifier
 import torch.optim as optim
@@ -285,6 +286,11 @@ def main():
 
     model = torch.nn.DataParallel(model, device_ids=gpu_ids)
     model.cuda()
+    
+    if args.use_tensorboard:
+        writer = SummaryWriter(log_dir=args.tensorboard_path)
+    else:
+        writer = None
 
 
     if args.dataset == 'CREMAD':
@@ -334,6 +340,17 @@ def main():
 
             acc, acc_a,acc_v = valid(args, model, device, test_dataloader)
 
+            if args.use_tensorboard:
+                writer.add_scalar('Loss/train', batch_loss, epoch)
+                writer.add_scalar('Accuracy/train', acc, epoch)
+                writer.add_scalar('Accuracy_Audio/train', acc_a, epoch)
+                writer.add_scalar('Accuracy_Visual/train', acc_v, epoch)
+
+                writer.add_scalar('Loss/test', batch_loss, epoch)  # Test loss (if available)
+                writer.add_scalar('Accuracy/test', acc, epoch)
+                writer.add_scalar('Accuracy_Audio/test', acc_a, epoch)
+                writer.add_scalar('Accuracy_Visual/test', acc_v, epoch)
+
 
             if acc > best_acc:
                 best_acc = float(acc)
@@ -361,6 +378,8 @@ def main():
                 print("Loss: {:.4f}, Acc: {:.4f}, Acc_a: {:.4f}, Acc_v: {:.4f},Best Acc: {:.4f}".format(
                     batch_loss, acc,acc_a,acc_v,best_acc))
 
+        if writer:
+            writer.close()
 
 
 if __name__ == "__main__":
